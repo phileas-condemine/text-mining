@@ -1,0 +1,924 @@
+text_mining
+========================================================
+author: AGPC
+date: `r as.Date(Sys.time())`
+autosize: true
+
+About R Presentation
+========================================================
+
+https://support.rstudio.com/hc/en-us/articles/200532307-Customizing-Fonts-and-Appearance
+
+About this presentation
+========================================================
+The text mining techniques I will demonstrate : tokenization, stemming, spellcheck, are linguistic concept.
+
+It means they are designed by language experts. For each language, experts need describe rules "manually".
+
+This methodology is comparable to feature engineering techniques done by "business experts", it can be opposed to (brute force) deep learning/artificial intelligence (AI) techniques that take a huge corpus such as wordnet and learn by "itself" grammar and orthograph. 
+
+These techniques will be briefly introduced tomorrow.
+
+Text vectorization, in linguistic/text mining context, refers to simple one hot encoding (term-document matrix).
+Text vectorization, in deep learning context, refers to algebraic representation where 1) king - male + female = queen or Paris - France + England = London and 2) 
+a- 'hello' is "close" to 'good morning' (synonym), 
+b- 'hello' is "opposed" ie "far" from 'goodbye' (antonym) but mainly represented by the same vectors
+c- 'hello' is "far" from 'I like this song' (non related) and represented by different vectors
+Now people use t-sne rather than PCA, so this idea of orthogonality is deprecated and "distance" prevails.
+
+Packages
+========================================================
+```{r echo=F , warnings=F}
+packages_list=c("knitr","codetools","devtools","data.table","tm","SnowballC","xml2","rvest","tidyverse","stringr","magrittr","hexView","httr","jsonlite","pbapply","wordcloud","text2vec","xgboost","LDAvis","topicmodels","stringr")
+for (pkg in packages_list){
+  print(paste0("check: ",pkg))
+if(!require(pkg,character.only = T)){
+  print(paste0("need to install: ",pkg))
+  install.packages(pkg)
+}
+library(pkg,character.only = T)
+}
+```
+
+Data
+========================================================
+
+https://data.seattle.gov/Permitting/Building-Permits-Current/mags-97de
+```{r read the data for building permits}
+building_permits <- fread("../data/Building_Permits___Current.csv")
+head(building_permits,1)
+```
+
+Free text variable `Description`
+========================================================
+
+```{r}
+head(building_permits$Description,10)
+```
+
+Remove digits and punctuation
+========================================================
+remove double quote
+```{r,eval=F}
+building_permits$Description <- gsub(x = building_permits$Description,pattern = '"',replacement = " ")
+```
+remove simple quote
+```{r,eval=F}
+building_permits$Description <- gsub(x = building_permits$Description,pattern = "'",replacement = " ")
+```
+remove backslash
+```{r,eval=F}
+building_permits$Description <- gsub(x = building_permits$Description,pattern = "\\\\",replacement = " ")
+```
+remove digits and punctuation
+```{r,eval=F}
+building_permits$Description <- gsub(x = building_permits$Description,pattern = "[[:digit:]]|[[:punct:]]",replacement = " ")
+```
+keep only alphabet characters
+```{r text prep2}
+building_permits$Description <- str_replace_all(building_permits$Description, "[^[:alpha:]]", " ")
+```
+remove tabulation
+```{r}
+building_permits$Description <- str_replace_all(building_permits$Description, "\t", " ")
+```
+
+Remove whitespaces
+========================================================
+
+```{r text prep3}
+whitespace_rm <- function(vector){
+count=1
+while(length(grep("  ",vector))>0){
+  print(count)
+ vector <- str_replace_all(vector, "  ", " ")
+ count=count+1
+}
+return(vector)
+}
+building_permits$Description <- whitespace_rm(building_permits$Description)
+```
+
+```{r eval=FALSE, include=FALSE}
+tm_data <- building_permits[,c("Description","Value"),with=F]
+save(list="tm_data",file="text_and_value_data.RData")
+```
+
+```{r investigate erroneous char, eval=FALSE, include=FALSE}
+building_permits$Description[grep("sidelights",building_permits$Description,ignore.case = T)]
+```
+
+Formatting free text with R and tm
+========================================================
+```{r}
+text_corpus=tm::Corpus(tm::VectorSource(x = building_permits$Description))
+tm::inspect(text_corpus[sample(1:length(text_corpus),10)])
+```
+
+What's inside a corpus
+========================================================
+```{r}
+text_item=text_corpus[[100]]
+summary(text_item)
+print(text_item$content)
+print(text_item$meta)
+```
+
+n-grams
+========================================================
+a n-gram is a sequence of n letters or words extracted from a sentence
+Here let's take some 4-grams based on letters.
+```{r}
+extract_first_4gram <- function(sentence)substr(x = sentence,start = 1,stop = 4)
+extract_first_4gram("hello word")
+extract_all_4gram <- function(sentence)sapply(1:(str_length(sentence)-3),function(x)substr(x=sentence,start=x,stop=x+3))
+extract_all_4gram("hello word")
+```
+
+tm_map the apply of tm corpora
+========================================================
+```{r}
+corpus_4gram <- tm::tm_map(text_corpus,extract_first_4gram)
+tm::inspect(corpus_4gram[sample(1:length(corpus_4gram),10)])
+```
+
+tm_map the apply of tm corpora
+========================================================
+tm_map doesn't handle mapping 1 to many (scalar to vector) especially with unknown size.
+```{r}
+corpus_4gram <- tm::tm_map(text_corpus,extract_all_4gram)
+tm::inspect(corpus_4gram[sample(1:length(corpus_4gram),10)])
+extract_all_4gram(inspect(text_corpus[[1]]))
+```
+
+Case conversion
+========================================================
+```{r tolower,warning=FALSE}
+text_corpus <- tm::tm_map(text_corpus, tolower)
+tm::inspect(text_corpus[sample(1:length(text_corpus),10)])
+```
+
+
+Stop Words
+========================================================
+```{r}
+stop_words <- tm::stopwords(kind = "en")
+sample(stop_words,100)
+```
+
+Remove custom stop words
+========================================================
+```{r removestop,warning=FALSE}
+text_corpus <- tm::tm_map(text_corpus,function(x) 
+                                  tm::removeWords(x,c(stop_words,
+                                                  "the","house")))
+tm::inspect(text_corpus[sample(1:length(text_corpus),10)])
+```
+
+Remove whitespace
+========================================================
+Stop Words were replaced by whitespaces
+```{r stripwhite,warning=FALSE}
+text_corpus <- tm::tm_map(text_corpus, tm::stripWhitespace)
+tm::inspect(text_corpus[sample(1:length(text_corpus),10)])
+```
+
+[FAC] Extract a sentence and read its raw ascii
+========================================================
+```{r}
+sentence <- text_corpus[[sample(1:length(text_corpus),1)]][1]
+print(sentence)
+write_lines(sentence,path = "../data/sentence_example.txt")
+sentence_raw <- readRaw("../data/sentence_example.txt")
+sentence_raw
+# print(system("cat ../data/sentence_example.txt"))
+```
+
+Tokenization - intro
+========================================================
+
+
+Tokenization means splitting document (from a corpus) in simple entities called tokens. These entities usually are ngrams.
+In the next example, we'll first consider the simplest token : a word.
+
+Tokenization is used in tasks such as spell-checking, processing searches, identifying parts of speech, sentence detection, document classification of documents, etc.
+
+If you want to know more about it : https://www.tutorialspoint.com/opennlp/opennlp_tokenization.htm
+
+
+Tokenization (split in tokens)
+========================================================
+```{r}
+token <- tm::tm_map(text_corpus, tm::scan_tokenizer)
+
+
+tm::inspect(text_corpus[1])
+tm::inspect(token[1:10])
+tm::inspect(token[sample(1:length(token),10)])
+```
+
+Tokenized corpus exploration
+========================================================
+```{r}
+length(text_corpus) # number of sentences/documents in the corpus
+length(token) # number of tokens extracted
+```
+```
+{r}
+head(sapply(text_corpus, str_length)) # sentence size
+head(sapply(token, str_length)) # token size
+```
+
+
+
+Focus on scarce tokens (observed once)
+========================================================
+We compute the term frequency over the whole corpus with `table`
+```{r}
+token_char <- unlist(lapply(token,as.character))
+token_table <- table(token_char)
+token_table <- token_table[order(token_table,decreasing = T)]
+head(token_table)
+token_all <- names(token_table)
+token_scarce <- names(token_table[token_table==1])
+head(sample(token_scarce),20) 
+```
+
+Save tokens to a file
+========================================================
+In case we want to use an external app to spellcheck or collate/fix words
+```{r}
+write_lines(x = token_char,path = "../data/tokens.txt")
+unlink("data")
+system("cat ../data/tokens.txt | tail",intern = T)
+```
+
+
+
+spell checking - misspelled words [load the html page]
+========================================================
+
+https://www.wordsapi.com/pricing you need to create an account and can access 2500 queries a day for free.
+http://app.aspell.net/lookup?dict=en_US;words=no%0D%0A%0D%0A%0D%0A
+http://wordnet.princeton.edu/wordnet/download/current-version/ 
+
+```{r}
+check_word <- xml2::read_html("http://app.aspell.net/lookup?dict=en_US;words=greetings%0D%0A%0D%0A%0D%0A")
+xml2::xml_name(check_word)
+xml2::xml_children(check_word)
+xml2::html_structure(check_word)
+```
+
+spell checking - misspelled words [scrape the site]
+========================================================
+```{r}
+get_table <- function(word) {
+  url <-  paste0("http://app.aspell.net/lookup?dict=en_US;words=", word,"%0D%0A%0D%0A%0D%0A")
+  my_table <- url %>%
+    read_html() %>%
+    html_nodes(xpath = '//html/body/table') %>%
+    html_table(fill=TRUE) %>% 
+    .[[1]] %>%
+    as.data.frame()
+  colnames(my_table) <- my_table[1,] #replace colnames with appropriate row
+  my_table = my_table[-1, ] #remove first row which is now assigned to colnames
+  my_table[1,] %>% as_tibble() #data.frame to tibble
+}
+word_examples=c("hackathon","world","Google","deep learning")
+sapply(word_examples,get_table)
+# token_stats <- sapply(token_all,get_table)
+# save(list = "token_stats",file = "../data/token_stats.RData")
+load("../data/token_stats.RData")
+```
+
+Example of misspelled words
+========================================================
+
+[1] "altarations"
+
+[1] "alteartions"
+
+[1] "alteraion"
+
+[1] "alteraitions"
+
+[1] "alteraiton"
+
+[1] "alteraitons"
+
+[1] "alteraltions"
+
+[1] "alterartions"
+
+[1] "alterartons"
+
+[1] "alteratation"
+
+[1] "alteratiions"
+
+[1] "alteratioms"
+
+[1] "alteratios"
+
+```{r echo=FALSE}
+token_dfstats <- data.frame(t(token_stats))
+token_dfstats$Frequency.per.million. <- as.numeric(gsub(pattern = ",",
+                                             replacement = "",
+                                             x = token_dfstats$Frequency.per.million.))
+```
+Show new words
+========================================================
+Zillow, facebook, google, biodiesel... OK it's consistent !
+```{r}
+token_dfstats %>%
+  mutate(Newness_num=as.numeric(Newness))%>%
+  arrange(Newness_num)%>%
+  filter(!is.na(Newness_num))%>%
+  select(Word,Newness_num)%>%
+  tail(20)
+```
+Show frequent words
+========================================================
+will, can, may... OK it's consistent !
+```{r}
+token_dfstats %>%
+  arrange(Frequency.per.million.)%>%
+  select(Word,Frequency.per.million.)%>%
+  tail(20)
+```
+Show misspelled words - based on en_US dictionary
+========================================================
+strange to see cancelled here. seattle should have higher case => en_US is case sensitive.
+```{r}
+token_dfstats %>% 
+  filter(token_dfstats$In.en_US=="NO")%>%
+  select(Word,Frequency.per.million.) %>%
+  head(10)
+```
+
+Show misspelled words - based on frequency and en_US dictionary
+========================================================
+american, york, london, english => en_US is case sensitive. Frequency.per.million can help us fix this.
+```{r message=FALSE, warning=FALSE}
+token_dfstats %>% 
+  arrange(Frequency.per.million.) %>%
+  filter(In.en_US=="NO") %>%
+  select(Word,Frequency.per.million.) %>%
+  {
+    rbind(head(.,7),tail(.,7))
+  }
+```
+
+Known fixes : wikipedia raw data + DIY
+========================================================
+
+https://en.wikipedia.org/wiki/Commonly_misspelled_English_words
+
+For the next practice, I recommand 1-2 groups try to download the page, parse the words and match the vocabulary to fix misspellings.
+
+How many words were fixed ?
+
+Have you improved data quality ?
+
+Did you find limitations ?
+
+Known fixes : github solution at the command line
+========================================================
+
+https://github.com/client9/misspell 
+
+curl -L -o ./install-misspell.sh https://git.io/misspell #download
+
+sh ./install-misspell.sh #install
+
+export your vocabulary in vocab.txt 
+
+misspell all.html vocab.txt important.md files.go #fix vocab.txt
+
+1-2 groups should try this.
+
+How many words were fixed ?
+
+Have you improved data quality ?
+
+Did you find limitations ?
+
+Use Docker + SOLR - Lucene Apache project
+========================================================
+
+https://hub.docker.com/_/solr/
+
+docker run --name my_solr -d -p 8983:8983 -t -v ~/Documents/training\ hackathon\ 2017/data/:/home/data solr
+
+docker exec -it --user=solr my_solr ls /home/data
+
+docker exec -it --user=solr my_solr bin/solr create_core -c gettingstarted
+
+docker exec -it --user=solr my_solr bin/post -c gettingstarted /home/data/tokens.txt
+
+https://lucene.apache.org/solr/guide/6_6/spell-checking.html#spell-checking
+
+QUERY A SPELLCHECK FOR MORNNIG (misspelled morning)
+
+ON THE FIRST QUERY YOU NEED TO MAKE A BUILD
+
+http://192.168.99.100:8983/solr/gettingstarted/spell?q=mornnig&spellcheck=true&spellcheck.build=true
+
+1-2 groups that have docker installed and can download from dockerhub, should try to play with it
+
+How many words were fixed ? 
+
+Have you improved data quality ?
+
+Did you find limitations ?
+
+Collate the words that don't exist with SOLR - LUCENE
+========================================================
+
+```{r}
+collate_word <- function(word){
+  url <- sprintf("http://192.168.99.100:8983/solr/gettingstarted/spell?spellcheck.q=%s&spellcheck.collate=true&spellcheck.onlyMorePopular=true",enc2utf8(word))
+  url <- iconv(url, to="UTF-8")
+  error <- tryCatch(expr = solr_output <- jsonlite::fromJSON(url),error = function(e)e)
+  is_err <- grep(pattern = "error",x = class(error),ignore.case = T)
+  if(length(is_err)==0){
+  collations <- solr_output$spellcheck$collations
+  if (length(collations)>1){
+    return(c(collations[[2]]$collationQuery))
+  } else{
+    return(NULL)}
+  } else {
+    return(c(error)$message)}
+}
+
+```
+
+Collate the words that don't exist with SOLR - LUCENE
+========================================================
+Examples of calls
+```{r}
+word="cnostruction"
+collate_word(word)
+word="hello"
+collate_word(word)
+word="café"
+collate_word(word)
+```
+
+Collate the words that don't exist with SOLR - LUCENE
+========================================================
+If you want a progress bar, check out pbapply.
+```{r}
+# token_collations <- pbapply::pbsapply(token_all,collate_word)
+# save(list="token_collations",file = "../data/token_collations.RData")
+load("../data/token_collations.RData")
+class(token_collations)
+sample(unlist(token_collations),20)
+```
+
+Stemming (keep only the stem of words)
+========================================================
+```{r}
+# stemmed_tokens <- tm::tm_map(token,tm::stemDocument)
+# save(list = "stemmed_tokens",file = "../data/stemmed_tokens.RData")
+load("../data/stemmed_tokens.RData")
+head_stemmed <- sapply(stemmed_tokens[1:1000],as.character)
+head_token <- sapply(token[1:1000],as.character)
+differences_index <- which(!head_stemmed==head_token)
+head(cbind(head_token,head_stemmed)[differences_index,],10)
+```
+
+Stemming (keep only the stem of words)
+========================================================
+1-2 groups should try to use stemming to merge words, maybe fix misspelling, improve data quality, or explore your own ideas.
+
+How many words were fixed ?
+
+Did you find limitations ?
+
+Term-Document Matrix
+========================================================
+```{r}
+tdm <- tm::TermDocumentMatrix(text_corpus,
+                          control = list(removePunctuation = TRUE,
+                                         stopwords = TRUE))
+inspect(tdm[1:10,1:20])
+```
+
+
+
+Document-Term Matrix
+========================================================
+
+```{r dtm,warning=FALSE}
+dtm <- tm::DocumentTermMatrix(text_corpus)
+inspect(dtm[1:20,1:10])
+```
+
+
+Calculate highest frequency words
+========================================================
+
+```{r highfreq,warning=FALSE}
+num=100
+terms <- findFreqTerms(tdm)[1:num]
+
+text_tf <- tdm[terms,] %>%
+      as.matrix() %>%
+      rowSums()  %>% 
+      data.frame(Term = terms, Frequency = .) %>%  
+      arrange(desc(Frequency))
+```
+
+Visualize the most frequent words with wordcloud and barplot
+========================================================
+```{r cloudplot,warning=FALSE}
+
+###word cloud
+wordcloud::wordcloud(words = text_tf$Term, freq = (text_tf$Frequency),
+                     max.words = 10, random.color=F,colors=brewer.pal(6,"Dark2"))
+
+###barplot
+ggplot(text_tf[1:20,])+geom_bar(aes(x=Term,y=Frequency),stat="identity")
+
+```
+
+Corpus based frequency of words
+========================================================
+1-2 groups should use corpus information, such as term freq to fix misspelling, improve data quality.
+
+What did you try ? 
+
+How many words were fixed ?
+
+What are the limits of your experimentation ?
+
+PRACTICE TIME 
+========================================================
+
+1) Wikipedia raw data + DIY
+
+2) Github Misspell project
+
+3) SOLR
+
+4) Stemming
+
+5) Corpus own data
+
+6) Other
+
+45 minutes practice then 60 seconds presentation per group
+
+
+Data prep - word to ranking
+========================================================
+
+```{r,eval=F}
+prune_top_words=5
+num_words=1000
+terms <- findFreqTerms(tdm)[prune_top_words:num_words]
+
+text_tf <- tdm[terms,] %>%
+      as.matrix() %>%
+      rowSums()  %>% 
+      data.frame(Term = terms, Frequency = .) %>%  
+      arrange(desc(Frequency))%>%
+      mutate(rank=1:nrow(.),wordlen=str_length(terms)) %>%
+      arrange(desc(wordlen))
+
+
+sentence <- building_permits$Description %>% tolower %>% paste0(" ",.," ")
+
+# https://stackoverflow.com/questions/19424709/r-gsub-pattern-vector-and-replacement-vector
+a <- paste0(" ",text_tf$Term," ")
+b <- paste0(" ",as.character(text_tf$rank)," ")
+names(b) <- a
+sentence <- str_replace_all(string = sentence, b)
+head(sentence)
+
+sentence_hashed_ranked <- gsub("[[:alpha:]]","",sentence)
+sentence_hashed_ranked <- gsub("\\s+"," ",sentence_hashed_ranked)
+sentence_hashed_ranked
+
+data_prepared <- data.frame(Value=building_permits$Value,Description=sentence_hashed_ranked)
+save(list="data_prepared",file="data_prepared_for_keras_lstm.RData")
+```
+
+
+
+Predictive modelling - data subset
+========================================================
+Predict the value of non-zero value construction
+
+```{r}
+dt.construction=building_permits %>%
+  filter(`Permit Type`=="Construction")%>%
+  mutate(Value=gsub(pattern = "\\$",replacement = "",x = Value),
+         Value=as.numeric(Value))%>%
+  filter(Value>0)
+dt.size=nrow(dt.construction)
+train_sample=sample(1:dt.size,round(.7*dt.size))
+plot(quantile(dt.construction$Value,1:90/100))
+
+```
+
+
+Predictive modelling - create vocabulary
+========================================================
+```{r tokenizetrain, warning=FALSE}
+feature="Description"
+id="Application/Permit Number"
+label="Value"
+train.token <- dt.construction[train_sample,feature] %>%tolower %>%word_tokenizer
+
+NLP.train <- itoken(train.token,ids = dt.construction[train_sample,id], progressbar = FALSE)
+
+NLP.dictionary <- create_vocabulary(NLP.train,stopwords = c(tm::stopwords(kind = 'en'),'construct','constrution','per'), ngram = c(ngram_min=1L,ngram_max=4L))
+tail(NLP.dictionary)
+```
+
+Predictive modelling - prune vocabulary
+========================================================
+```{r prunedic,warning=FALSE}
+NLP.dictionary.pruned <- prune_vocabulary(NLP.dictionary,
+                                          term_count_min = 50,
+                                          doc_proportion_max = 0.5)
+nrow(NLP.dictionary.pruned)
+
+NLP.vectorizer <- vocab_vectorizer(NLP.dictionary.pruned)
+```
+
+Predictive modelling - vectorize the data
+========================================================
+```{r vectortrain,warning=FALSE}
+NLP.matrix.train <- create_dtm(NLP.train, NLP.vectorizer)
+dim(NLP.matrix.train)
+print(NLP.matrix.train[1:3,1:8])
+```
+
+Predictive modelling - training Cross Validation
+========================================================
+Train a learning model on the training set
+
+Since just used as exmaple, we use heuristic to decide hyperparameters
+
+In real study, use cross validation of caret package to decide hyperparameters is recommended
+
+```{r trainxgboost, eval=FALSE, warning=FALSE}
+param_xgb <- list(objective = "reg:linear",
+                  booster = "gbtree",
+                  eta = 0.01,
+                  max_depth = 5,
+                  min_child_weight = 50,
+                  subsample = .7,
+                  colsample_bytree = .7,
+                  nthread = 4,eval_metric='rmse'
+                  )
+train.xgbCV_ <- xgboost::xgb.cv(data= NLP.matrix.train,
+                                label = log(dt.construction[train_sample,label]),
+                                params=param_xgb,
+                                nrounds=5000,
+                                nfold=4,
+                                stratified=F,
+                                verbose=1,
+                                early_stopping_rounds=100,
+                                print_every_n=50,
+                                maximize=F)
+```
+```{r trainxgboost2, eval=FALSE, warning=FALSE}
+xgbMod_ <- xgboost::xgboost(data=NLP.matrix.train,
+                            label = log(dt.construction[train_sample,label]),
+                            params=param_xgb,
+                            nrounds=train.xgbCV_$best_iteration,
+                            verbose=TRUE,
+                            maximize=F)
+save(list="xgbMod_",file="value_xgb.RData")
+```
+
+```{r}
+load("value_xgb.RData")
+imp.raw_ <- xgboost::xgb.importance(feature_names = colnames(NLP.matrix.train),model = xgbMod_)
+
+print(imp.raw_[1:10])
+```
+
+Predictive modelling - predict on test set
+========================================================
+```{r predicttest,warning=FALSE}
+test.token <- dt.construction[,feature] %>%tolower %>%word_tokenizer
+
+NLP.test <- itoken(test.token,ids = dt.construction[,id], progressbar = FALSE)
+NLP.matrix.test <- create_dtm(NLP.test, NLP.vectorizer)
+
+dt.construction$value_pred <- exp(predict(xgbMod_,newdata = NLP.matrix.test,type='response'))
+
+print(dt.construction[-train_sample,][1,])
+```
+
+Measure model performance
+========================================================
+RMSE
+
+gain curve (Lorenz)
+
+
+
+```{r performance1,warning=FALSE}
+tab=dt.construction[-train_sample,c("value_pred","Value")]
+
+gain_tab <- tab %>%
+  filter(value_pred>1000)%>%
+  arrange(-value_pred) %>%
+  mutate(index=1:nrow(.)/nrow(.),gain=cumsum(log(Value)-min(log(Value)))/sum(log(Value)-min(log(Value))),sub_sample=sample(1:round(nrow(.)/500),replace=T,size=nrow(.)))
+  mean(gain_tab$gain,na.rm=T)*2-1
+  
+
+tab %>%
+  filter(value_pred>1000)%>%
+  arrange(-value_pred) %>%
+  mutate(index=1:nrow(.)/nrow(.),gain=cumsum(log(Value)-min(log(Value)))/sum(log(Value)-min(log(Value))),sub_sample=sample(1:round(nrow(.)/500),replace=T,size=nrow(.)))%>%
+  filter(sub_sample==1) %>%
+  select(index,gain) %>%
+  ggplot(.)+geom_line(aes(x=index,y=gain),color="green")+geom_line(data=data.frame(x=c(0,1),y=c(0,1)),aes(x=x,y=y))
+
+```
+
+Build sentence and check prediction
+========================================================
+```{r performance2,warning=FALSE}
+
+dt.team <- data.frame(id=NA,Description=NA,comment=NA)
+dt.team[1,] <- c('colleague1',"dig a huge swimming pool with a nice veranda. rooftop bar and additional garage","rich")
+dt.team[2,] <- c('colleague2',"the movie was a bit disappointing. The actors weren't convincing and the movie was way too long","not a building permit")
+dt.team[3,] <- c('colleague3','alterations of the field to occupy less space with the seismic devices',"based on top imp features")
+dt.team[4,] <- c('colleague4','single family residence attached garage needs noise remedy improvement program',"based on lowest imp features")
+
+imp_ngrams<- gsub("_"," ",imp.raw_$Feature[1:100])
+dt.team <- rbind(dt.team,data.frame(id=sprintf("imp%s",1:100),Description=imp_ngrams,comment="simply ngram"))
+
+team.token <- dt.team[,feature] %>%tolower %>%word_tokenizer
+NLP.team <- itoken(team.token,ids = dt.team[,"id"], progressbar = FALSE)
+NLP.matrix.team <- create_dtm(NLP.team, NLP.vectorizer)
+dt.team$value <- exp(predict(xgbMod_,newdata = NLP.matrix.team,type='response'))
+
+print(dt.team[,c("Description","value")])
+
+```
+hotel 127698.124
+
+community  18127.447
+
+hospital 111057.947
+
+
+
+Latent Dirichlet Allocation - "text data clustering"
+========================================================
+
+LDA 
+
+https://datascience.stackexchange.com/questions/199/what-does-the-alpha-and-beta-hyperparameters-contribute-to-in-latent-dirichlet-a
+
+
+LDA Visualization
+
+https://nlp.stanford.edu/events/illvi2014/papers/sievert-illvi2014.pdf 
+
+https://github.com/cpsievert/LDAvis
+
+help(createJSON, package = "LDAvis")
+
+vignette("details", package = "LDAvis")
+
+LDA - data formatting
+========================================================
+
+```{r LDA prep}
+dtm_triplet_dt <- data.table(i=dtm$i,j=dtm$j,v=dtm$v)#data.table format
+dtm_triplet <- slam::simple_triplet_matrix(i=dtm$i,j=dtm$j,v=as.integer(dtm$v))#slam simple triplet matrix format
+
+
+nb_docs=length(levels(factor(dtm_triplet$i))) #number of doc
+dtm_triplet$nrow #number of doc, there are empty docs
+# Careful, LDA don't like empty docs.
+dtm_triplet <- slam::simple_triplet_matrix(i=as.integer(factor(dtm_triplet_dt$i)),j=dtm_triplet_dt$j,v=as.integer(dtm_triplet_dt$v))#i value with no corresponding j => row of zero ie empty doc. fix it.
+
+
+nb_words=length(levels(factor(dtm_triplet$j))) #number of words
+nrow(dtm_triplet)*3/(nb_docs*nb_words)
+print("this is the frequency of non zero entries. It indicates the efficiency of sparse representation vs matrix representation.")
+
+i_sum <- dtm_triplet_dt[,list(num_unique_words=.N,num_words=sum(v)),by=i]
+head(i_sum) #number of different words & number of words per doc
+j_sum <- dtm_triplet_dt[,list(freq=.N,num=sum(v)),by=j]
+head(j_sum) #freq & number of obs of each word over the whole corpus
+
+
+```
+
+LDA - params
+========================================================
+
+
+```{r LDA params}
+
+# LDA standard params
+k <- 10
+nstart <- 1
+seed <-list(1990,1337,13,2003,5,63,100001,765)[1:nstart] #size of nstart
+best <- TRUE
+keep <- TRUE
+verbose <- 1 #show perf at every "verbose" iteration
+alpha <- .1
+
+# for GIBBS sampling
+burnin <- 10 #skip/burn the first "burnin"
+iter <- 50 #number of iter
+thin <- 10 #keep one out of "thin"
+delta <- .1
+
+# for VEM 
+estimate.alpha=F
+var=list(iter.max=100,tol=10^-6)
+em=list(iter.max=200,tol=10^-4)
+```
+
+LDA training
+========================================================
+
+```{r LDA train, eval=F}
+# careful, gibbs sampling is very long to run even with a subsample.
+# system.time(lda_gibbs <- topicmodels::LDA(dtm_triplet,k, method="Gibbs", control=list(nstart=nstart, seed=seed, best=best, burnin=burnin, iter=iter, thin=thin,verbose=verbose,delta=delta)))
+# save(list="lda_gibbs",file="lda_gibbs.RData")
+
+# system.time(lda_VEM <- topicmodels::LDA(dtm_triplet,k=k, control = list(alpha = alpha,nstart=nstart,best=best,keep=keep,estimate.alpha=estimate.alpha,verbose=verbose,seed=seed,var=var,em=em),method = "VEM"))
+# save(list="lda_VEM",file="lda_vem.RData")
+```
+
+LDA vis
+========================================================
+
+```{r LDAvis, eval=F}
+# load("lda_gibbs.RData")
+load("lda_vem.RData")
+phi <- posterior(lda_VEM)$terms %>% as.matrix
+theta <- posterior(lda_VEM)$topics %>% as.matrix
+vocab <- dtm$dimnames$Terms
+doc_length <- i_sum$num_words
+  
+# Convert to json
+json_lda <- LDAvis::createJSON(phi = phi, theta = theta,
+                                 vocab = vocab,
+                                 doc.length = doc_length,
+                                 term.frequency = j_sum$freq)
+write(json_lda, "lda_vem.json")
+save(list="json_lda",file="json_lda.RData")
+```
+
+```{r}
+load("json_lda.RData")
+serVis(json_lda)
+```
+
+LDA common errors
+========================================================
+1) doc.length
+
+<p color=red> Error in LDAvis::createJSON(phi = phi, theta = theta, vocab = vocab, doc.length = doc_length,  : 
+
+  Length of doc.length not equal 
+  
+      to the number of rows in theta; both should be equal to the number of 
+      
+      documents in the data.
+      
+</p>
+
+
+2) NAs introduced
+
+<p>em iteration 10 by coercion
+
+document 663262
+
+final e step document 663262
+
+    user   system  elapsed 
+    
+5367.940    6.510 5410.864 
+
+</p>
+<p color=red> Warning message:
+
+In initialize(value, ...) : NAs introduced by coercion to integer range 
+
+</p>
+
+=> something happened under the hood, there must be something wrong with the input.
+
+
+
+To go further : 
+========================================================
+http://tidytextmining.com/index.html
