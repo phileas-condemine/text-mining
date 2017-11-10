@@ -86,7 +86,7 @@ Data
 
 https://data.seattle.gov/Permitting/Building-Permits-Current/mags-97de
 ```{r read the data for building permits}
-path_to_building_data <- system("find / -name building_data.csv", intern=TRUE)
+path_to_building_data <- system("find /home/rstudio -name building_data.csv", intern=TRUE)
 path_to_data <- gsub("building_data.csv","",path_to_building_data)
 building_permits <- fread(path_to_building_data)
 head(building_permits,1)
