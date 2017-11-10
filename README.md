@@ -13,6 +13,9 @@ Then create local folders
 You just need these folder to use them as volumes for your docker container<br>
 then run a rstudio docker image from the <b>Docker Quickstart Terminal</b><br>
 <ul>
+<li> you may need to stop your current container
+<li> docker stop practice_hackathon
+<li> docker stop keras_demo
 <li> docker run -d -v ~/Documents/tm/:/home/rstudio/Documents -v ~/Documents/data/:/home/rstudio/data -p 8787:8787 --name text_mining rocker/rstudio
 <li>then install libxml2 on your container typing in the Docker Quickstart Terminal
 <li> docker exec -it text_mining apt-get update
