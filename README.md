@@ -16,7 +16,7 @@ then run a rstudio docker image from the <b>Docker Quickstart Terminal</b><br>
 <li> docker run -d -v ~/Documents/tm/:/home/rstudio/Documents -v ~/Documents/data/:/home/rstudio/data -p 8787:8787 --name text_mining rocker/rstudio
 <li>then install libxml2 on your container typing in the Docker Quickstart Terminal
 <li> docker exec -it text_mining apt-get update
-<li> docker exec -it text_mining apt-get install libxml2-dev
+<li> docker exec -it text_mining apt-get install -y libxml2-dev
 <li> docker exec -it text_mining apt-get install zlib1g-dev
 </ul>
 then move to your container following the links http://192.168.99.100:8787 or http://192.168.99.101:8787 check your ip with `docker-machine ip`
