@@ -291,7 +291,7 @@ Save tokens to a file
 ========================================================
 In case we want to use an external app to spellcheck or collate/fix words
 ```{r}
-write_lines(x = token_char,path = paste0(path_to_data,tokens.txt))
+write_lines(x = token_char,path = paste0(path_to_data,"tokens.txt"))
 unlink("data")
 system("cat ../data/tokens.txt | tail",intern = T)
 ```
@@ -330,8 +330,8 @@ get_table <- function(wrd) {
 word_examples=c("hackathon","world","Google","deep learning")
 sapply(word_examples,get_table)
 # token_stats <- sapply(token_all,get_table)
-# save(list = "token_stats",file = paste0(path_to_data,token_stats.RData))
-load(paste0(path_to_data,token_stats.RData))
+# save(list = "token_stats",file = paste0(path_to_data,"token_stats.RData"))
+load(paste0(path_to_data,"token_stats.RData"))
 ```
 
 Example of misspelled words
@@ -514,8 +514,8 @@ Collate the words that don't exist with SOLR - LUCENE
 If you want a progress bar, check out pbapply.
 ```{r}
 # token_collations <- pbapply::pbsapply(token_all,collate_word)
-# save(list="token_collations",file = paste0(path_to_data,token_collations.RData))
-load(paste0(path_to_data,token_collations.RData))
+# save(list="token_collations",file = paste0(path_to_data,"token_collations.RData"))
+load(paste0(path_to_data,"token_collations.RData"))
 class(token_collations)
 sample(unlist(token_collations),20)
 ```
@@ -526,8 +526,8 @@ explanation.s, explain.s, explained => explain
 
 ```{r}
 # stemmed_tokens <- tm::tm_map(token,tm::stemDocument)
-# save(list = "stemmed_tokens",file = paste0(path_to_data,stemmed_tokens.RData))
-load(paste0(path_to_data,stemmed_tokens.RData))
+# save(list = "stemmed_tokens",file = paste0(path_to_data,"stemmed_tokens.RData"))
+load(paste0(path_to_data,"stemmed_tokens.RData"))
 head_stemmed <- sapply(stemmed_tokens[1:1000],as.character)
 head_token <- sapply(token[1:1000],as.character)
 differences_index <- which(!head_stemmed==head_token)
