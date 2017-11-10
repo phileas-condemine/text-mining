@@ -21,6 +21,8 @@ then run a rstudio docker image from the <b>Docker Quickstart Terminal</b><br>
 <li> docker exec -it text_mining apt-get update
 <li> docker exec -it text_mining apt-get install -y libxml2-dev
 <li> docker exec -it text_mining apt-get install zlib1g-dev
+<li> docker exec -it text_mining apt-get install gsl-bin libgsl0-dev
+
 </ul>
 then move to your container following the links http://192.168.99.100:8787 or http://192.168.99.101:8787 check your ip with `docker-machine ip`
 <ul>
