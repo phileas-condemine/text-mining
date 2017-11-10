@@ -4,6 +4,40 @@ author: AGPC
 date: `r as.Date(Sys.time())`
 autosize: true
 
+
+Why text mining in a pricing training ?
+========================================================
+
+The most popular application of text mining is sentiment analysis.<br>
+
+In insurance we already use it for claims management :
+<ul>
+<li> anticipate litigation,
+<li> bodily injuries early detection,
+<li> claims triage
+<li> ...
+</ul>
+
+Why not try to use text mining for risk modelling ie pricing ?
+
+SME pricing based on
+<ul>
+<li> press review, clients reviews with google, tripadvisor...
+<li> official website
+<li> legal information such as building permits
+<li> financial analysts reports
+</ul>
+
+Retail pricing based on
+<ul>
+<li> household pricing => building permit or other legal information
+<li> motor pricing => vehicle rish classification based on reviews
+<li> information on former claims => model post-claim premium & make portfolio management
+<li> do you have other suggestions ?
+</ul>
+
+
+
 About R Presentation
 ========================================================
 
@@ -15,21 +49,28 @@ The text mining techniques I will demonstrate : tokenization, stemming, spellche
 
 It means they are designed by language experts. For each language, experts need describe rules "manually".
 
-This methodology is comparable to feature engineering techniques done by "business experts", it can be opposed to (brute force) deep learning/artificial intelligence (AI) techniques that take a huge corpus such as wordnet and learn by "itself" grammar and orthograph. 
+This methodology is comparable to feature engineering techniques done by "business experts", it can be opposed to (brute force) deep learning/artificial intelligence (AI) techniques that take a huge corpus such as wordnet and learn by "itself" grammar and orthograph.
 
 These techniques will be briefly introduced tomorrow.
 
 Text vectorization, in linguistic/text mining context, refers to simple one hot encoding (term-document matrix).
-Text vectorization, in deep learning context, refers to algebraic representation where 1) king - male + female = queen or Paris - France + England = London and 2) 
-a- 'hello' is "close" to 'good morning' (synonym), 
-b- 'hello' is "opposed" ie "far" from 'goodbye' (antonym) but mainly represented by the same vectors
-c- 'hello' is "far" from 'I like this song' (non related) and represented by different vectors
-Now people use t-sne rather than PCA, so this idea of orthogonality is deprecated and "distance" prevails.
+Text vectorization, in deep learning context, refers to algebraic representation where
+<ul>
+<li> king - male + female = queen
+<li> Paris - France + England = London
+</ul>
+and
+<ol>
+<li> 'hello' is "close" to 'good morning' (synonym),
+<li> 'hello' is "opposed" ie "far" from 'goodbye' (antonym) but mainly represented by the same vectors
+<li> 'hello' is "far" from 'I like this song' (non related) and represented by different vectors
+</ol>
+Note :  about 2 and 3, now people use t-sne rather than PCA, so this idea of orthogonality is deprecated and "distance" prevails.
 
 Packages
 ========================================================
 ```{r echo=F , warnings=F}
-packages_list=c("knitr","codetools","devtools","data.table","tm","SnowballC","xml2","rvest","tidyverse","stringr","magrittr","hexView","httr","jsonlite","pbapply","wordcloud","text2vec","xgboost","LDAvis","topicmodels","stringr")
+packages_list=c("knitr","codetools","devtools","data.table","tm","SnowballC","xml2","rvest","tidyverse","stringr","magrittr","hexView","httr","jsonlite","pbapply","wordcloud","text2vec","xgboost","LDAvis","topicmodels")
 for (pkg in packages_list){
   print(paste0("check: ",pkg))
 if(!require(pkg,character.only = T)){
@@ -45,7 +86,7 @@ Data
 
 https://data.seattle.gov/Permitting/Building-Permits-Current/mags-97de
 ```{r read the data for building permits}
-building_permits <- fread("../data/Building_Permits___Current.csv")
+building_permits <- fread("../data/building_data.csv")
 head(building_permits,1)
 ```
 
@@ -142,7 +183,7 @@ corpus_4gram <- tm::tm_map(text_corpus,extract_first_4gram)
 tm::inspect(corpus_4gram[sample(1:length(corpus_4gram),10)])
 ```
 
-tm_map the apply of tm corpora
+[FAC] tm_map the apply of tm corpora
 ========================================================
 tm_map doesn't handle mapping 1 to many (scalar to vector) especially with unknown size.
 ```{r}
@@ -169,9 +210,9 @@ sample(stop_words,100)
 Remove custom stop words
 ========================================================
 ```{r removestop,warning=FALSE}
-text_corpus <- tm::tm_map(text_corpus,function(x) 
+text_corpus <- tm::tm_map(text_corpus,function(x)
                                   tm::removeWords(x,c(stop_words,
-                                                  "the","house")))
+                                                  "the","house"))) #add "per" word
 tm::inspect(text_corpus[sample(1:length(text_corpus),10)])
 ```
 
@@ -189,7 +230,7 @@ tm::inspect(text_corpus[sample(1:length(text_corpus),10)])
 sentence <- text_corpus[[sample(1:length(text_corpus),1)]][1]
 print(sentence)
 write_lines(sentence,path = "../data/sentence_example.txt")
-sentence_raw <- readRaw("../data/sentence_example.txt")
+sentence_raw <- hexView::readRaw("../data/sentence_example.txt")
 sentence_raw
 # print(system("cat ../data/sentence_example.txt"))
 ```
@@ -241,7 +282,7 @@ token_table <- token_table[order(token_table,decreasing = T)]
 head(token_table)
 token_all <- names(token_table)
 token_scarce <- names(token_table[token_table==1])
-head(sample(token_scarce),20) 
+head(sample(token_scarce),20)
 ```
 
 Save tokens to a file
@@ -260,7 +301,7 @@ spell checking - misspelled words [load the html page]
 
 https://www.wordsapi.com/pricing you need to create an account and can access 2500 queries a day for free.
 http://app.aspell.net/lookup?dict=en_US;words=no%0D%0A%0D%0A%0D%0A
-http://wordnet.princeton.edu/wordnet/download/current-version/ 
+http://wordnet.princeton.edu/wordnet/download/current-version/
 
 ```{r}
 check_word <- xml2::read_html("http://app.aspell.net/lookup?dict=en_US;words=greetings%0D%0A%0D%0A%0D%0A")
@@ -272,12 +313,12 @@ xml2::html_structure(check_word)
 spell checking - misspelled words [scrape the site]
 ========================================================
 ```{r}
-get_table <- function(word) {
-  url <-  paste0("http://app.aspell.net/lookup?dict=en_US;words=", word,"%0D%0A%0D%0A%0D%0A")
+get_table <- function(wrd) {
+  url <-  paste0("http://app.aspell.net/lookup?dict=en_US;words=", wrd,"%0D%0A%0D%0A%0D%0A")
   my_table <- url %>%
     read_html() %>%
     html_nodes(xpath = '//html/body/table') %>%
-    html_table(fill=TRUE) %>% 
+    html_table(fill=TRUE) %>%
     .[[1]] %>%
     as.data.frame()
   colnames(my_table) <- my_table[1,] #replace colnames with appropriate row
@@ -350,7 +391,7 @@ Show misspelled words - based on en_US dictionary
 ========================================================
 strange to see cancelled here. seattle should have higher case => en_US is case sensitive.
 ```{r}
-token_dfstats %>% 
+token_dfstats %>%
   filter(token_dfstats$In.en_US=="NO")%>%
   select(Word,Frequency.per.million.) %>%
   head(10)
@@ -360,7 +401,7 @@ Show misspelled words - based on frequency and en_US dictionary
 ========================================================
 american, york, london, english => en_US is case sensitive. Frequency.per.million can help us fix this.
 ```{r message=FALSE, warning=FALSE}
-token_dfstats %>% 
+token_dfstats %>%
   arrange(Frequency.per.million.) %>%
   filter(In.en_US=="NO") %>%
   select(Word,Frequency.per.million.) %>%
@@ -385,13 +426,13 @@ Did you find limitations ?
 Known fixes : github solution at the command line
 ========================================================
 
-https://github.com/client9/misspell 
+https://github.com/client9/misspell
 
 curl -L -o ./install-misspell.sh https://git.io/misspell #download
 
 sh ./install-misspell.sh #install
 
-export your vocabulary in vocab.txt 
+export your vocabulary in vocab.txt
 
 misspell all.html vocab.txt important.md files.go #fix vocab.txt
 
@@ -426,7 +467,7 @@ http://192.168.99.100:8983/solr/gettingstarted/spell?q=mornnig&spellcheck=true&s
 
 1-2 groups that have docker installed and can download from dockerhub, should try to play with it
 
-How many words were fixed ? 
+How many words were fixed ?
 
 Have you improved data quality ?
 
@@ -452,6 +493,7 @@ collate_word <- function(word){
 }
 
 ```
+Maybe we should retrieve the full list of collations and take the most frequent in our corpus
 
 Collate the words that don't exist with SOLR - LUCENE
 ========================================================
@@ -478,6 +520,8 @@ sample(unlist(token_collations),20)
 
 Stemming (keep only the stem of words)
 ========================================================
+explanation.s, explain.s, explained => explain
+
 ```{r}
 # stemmed_tokens <- tm::tm_map(token,tm::stemDocument)
 # save(list = "stemmed_tokens",file = "../data/stemmed_tokens.RData")
@@ -495,6 +539,13 @@ Stemming (keep only the stem of words)
 How many words were fixed ?
 
 Did you find limitations ?
+
+String distance
+========================================================
+Check slides hackathon last year (TopicsPrez.pptx) slides 17-18 <br>
+Already implemented in SOLR  <br>
+Covered in previous DS4A and pricing hackathon 2016 <br>
+Try adist for instance <br>
 
 Term-Document Matrix
 ========================================================
@@ -525,14 +576,16 @@ terms <- findFreqTerms(tdm)[1:num]
 
 text_tf <- tdm[terms,] %>%
       as.matrix() %>%
-      rowSums()  %>% 
-      data.frame(Term = terms, Frequency = .) %>%  
+      rowSums()  %>%
+      data.frame(Term = terms, Frequency = .) %>%
       arrange(desc(Frequency))
+head(text_tf,10)
+tail(text_tf,10)
 ```
 
 Visualize the most frequent words with wordcloud and barplot
 ========================================================
-```{r cloudplot,warning=FALSE}
+```{r cloudplot,warning=FALSE,fig.align='center',}
 
 ###word cloud
 wordcloud::wordcloud(words = text_tf$Term, freq = (text_tf$Frequency),
@@ -547,13 +600,13 @@ Corpus based frequency of words
 ========================================================
 1-2 groups should use corpus information, such as term freq to fix misspelling, improve data quality.
 
-What did you try ? 
+What did you try ?
 
 How many words were fixed ?
 
 What are the limits of your experimentation ?
 
-PRACTICE TIME 
+PRACTICE TIME
 ========================================================
 
 1) Wikipedia raw data + DIY
@@ -564,14 +617,14 @@ PRACTICE TIME
 
 4) Stemming
 
-5) Corpus own data
+5) Corpus own data and string distance
 
 6) Other
 
 45 minutes practice then 60 seconds presentation per group
 
 
-Data prep - word to ranking
+Data prep - replace words by their ranking based on tf
 ========================================================
 
 ```{r,eval=F}
@@ -581,8 +634,8 @@ terms <- findFreqTerms(tdm)[prune_top_words:num_words]
 
 text_tf <- tdm[terms,] %>%
       as.matrix() %>%
-      rowSums()  %>% 
-      data.frame(Term = terms, Frequency = .) %>%  
+      rowSums()  %>%
+      data.frame(Term = terms, Frequency = .) %>%
       arrange(desc(Frequency))%>%
       mutate(rank=1:nrow(.),wordlen=str_length(terms)) %>%
       arrange(desc(wordlen))
@@ -611,14 +664,16 @@ Predictive modelling - data subset
 ========================================================
 Predict the value of non-zero value construction
 
-```{r}
+```{r pred data subset,fig.align='center'}
 dt.construction=building_permits %>%
   filter(`Permit Type`=="Construction")%>%
   mutate(Value=gsub(pattern = "\\$",replacement = "",x = Value),
          Value=as.numeric(Value))%>%
   filter(Value>0)
 dt.size=nrow(dt.construction)
+set.seed(1337)
 train_sample=sample(1:dt.size,round(.7*dt.size))
+head(train_sample)
 plot(quantile(dt.construction$Value,1:90/100))
 
 ```
@@ -632,7 +687,7 @@ id="Application/Permit Number"
 label="Value"
 train.token <- dt.construction[train_sample,feature] %>%tolower %>%word_tokenizer
 
-NLP.train <- itoken(train.token,ids = dt.construction[train_sample,id], progressbar = FALSE)
+NLP.train <- text2vec::itoken(train.token,ids = dt.construction[train_sample,id], progressbar = FALSE)
 
 NLP.dictionary <- create_vocabulary(NLP.train,stopwords = c(tm::stopwords(kind = 'en'),'construct','constrution','per'), ngram = c(ngram_min=1L,ngram_max=4L))
 tail(NLP.dictionary)
@@ -642,7 +697,7 @@ Predictive modelling - prune vocabulary
 ========================================================
 ```{r prunedic,warning=FALSE}
 NLP.dictionary.pruned <- prune_vocabulary(NLP.dictionary,
-                                          term_count_min = 50,
+                                          term_count_min = 20,
                                           doc_proportion_max = 0.5)
 nrow(NLP.dictionary.pruned)
 
@@ -652,29 +707,30 @@ NLP.vectorizer <- vocab_vectorizer(NLP.dictionary.pruned)
 Predictive modelling - vectorize the data
 ========================================================
 ```{r vectortrain,warning=FALSE}
-NLP.matrix.train <- create_dtm(NLP.train, NLP.vectorizer)
+NLP.matrix.train <- text2vec::create_dtm(NLP.train, NLP.vectorizer)
 dim(NLP.matrix.train)
 print(NLP.matrix.train[1:3,1:8])
 ```
 
 Predictive modelling - training Cross Validation
 ========================================================
-Train a learning model on the training set
+Train a learning model on the training set <br>
+Since just used as exmaple, we use heuristic to decide hyperparameters <br>
+With more time, run a gridsearch (with bayesian optimization) using caret (using mlr and mlrmbo) package.
 
-Since just used as exmaple, we use heuristic to decide hyperparameters
-
-In real study, use cross validation of caret package to decide hyperparameters is recommended
-
-```{r trainxgboost, eval=FALSE, warning=FALSE}
+```{r trainxgboostparams, eval=FALSE, warning=FALSE}
 param_xgb <- list(objective = "reg:linear",
                   booster = "gbtree",
                   eta = 0.01,
-                  max_depth = 5,
+                  max_depth = 8,
                   min_child_weight = 50,
                   subsample = .7,
                   colsample_bytree = .7,
                   nthread = 4,eval_metric='rmse'
                   )
+```
+
+```{r trainxgboostCV, eval=FALSE, warning=FALSE}
 train.xgbCV_ <- xgboost::xgb.cv(data= NLP.matrix.train,
                                 label = log(dt.construction[train_sample,label]),
                                 params=param_xgb,
@@ -686,18 +742,20 @@ train.xgbCV_ <- xgboost::xgb.cv(data= NLP.matrix.train,
                                 print_every_n=50,
                                 maximize=F)
 ```
-```{r trainxgboost2, eval=FALSE, warning=FALSE}
+```{r trainxgboostmodel, eval=FALSE, warning=FALSE}
 xgbMod_ <- xgboost::xgboost(data=NLP.matrix.train,
                             label = log(dt.construction[train_sample,label]),
                             params=param_xgb,
-                            nrounds=train.xgbCV_$best_iteration,
+                            nrounds=1000,#train.xgbCV_$best_iteration,
                             verbose=TRUE,
-                            maximize=F)
-save(list="xgbMod_",file="value_xgb.RData")
+                            maximize=F,print_every_n = 50)
+save(list="xgbMod_",file="value_xgb1000.RData")
 ```
 
-```{r}
-load("value_xgb.RData")
+Relative importance
+========================================================
+```{r rel imp words}
+load("value_xgb1000.RData")
 imp.raw_ <- xgboost::xgb.importance(feature_names = colnames(NLP.matrix.train),model = xgbMod_)
 
 print(imp.raw_[1:10])
@@ -716,33 +774,48 @@ dt.construction$value_pred <- exp(predict(xgbMod_,newdata = NLP.matrix.test,type
 print(dt.construction[-train_sample,][1,])
 ```
 
-Measure model performance
+
+Measure model performance - Gain/Lorenz Curve
 ========================================================
-RMSE
-
-gain curve (Lorenz)
-
-
-
-```{r performance1,warning=FALSE}
+```{r performance plot,warning=FALSE,fig.align="center"}
 tab=dt.construction[-train_sample,c("value_pred","Value")]
-
-gain_tab <- tab %>%
-  filter(value_pred>1000)%>%
-  arrange(-value_pred) %>%
-  mutate(index=1:nrow(.)/nrow(.),gain=cumsum(log(Value)-min(log(Value)))/sum(log(Value)-min(log(Value))),sub_sample=sample(1:round(nrow(.)/500),replace=T,size=nrow(.)))
-  mean(gain_tab$gain,na.rm=T)*2-1
-  
+threshold=100
+keep_fraction=500
 
 tab %>%
-  filter(value_pred>1000)%>%
+  filter(value_pred>threshold)%>%
   arrange(-value_pred) %>%
-  mutate(index=1:nrow(.)/nrow(.),gain=cumsum(log(Value)-min(log(Value)))/sum(log(Value)-min(log(Value))),sub_sample=sample(1:round(nrow(.)/500),replace=T,size=nrow(.)))%>%
+  mutate(index_pred=1:nrow(.)/nrow(.),log_value=log(Value),gain_pred=cumsum(log_value-min(log_value))/sum(log_value-min(log_value)),sub_sample=sample(1:round(nrow(.)/keep_fraction),replace=T,size=nrow(.)))%>%
+  arrange(-Value)%>%
+  mutate(index_perfect=1:nrow(.)/nrow(.),gain_perfect=cumsum(log_value-min(log_value))/sum(log_value-min(log_value)))%>%
   filter(sub_sample==1) %>%
-  select(index,gain) %>%
-  ggplot(.)+geom_line(aes(x=index,y=gain),color="green")+geom_line(data=data.frame(x=c(0,1),y=c(0,1)),aes(x=x,y=y))
+  select(index_pred,index_perfect,gain_pred,gain_perfect) %>%
+  ggplot(.)+
+  geom_line(aes(x=index_pred,y=gain_pred),color="green")+
+  geom_line(aes(x=index_perfect,y=gain_perfect),color="red")+
+  geom_line(data=data.frame(x=c(0,1),y=c(0,1)),aes(x=x,y=y),color="black")
 
 ```
+
+
+Measure model performance - Gini
+========================================================
+
+```{r performance gini,warning=FALSE}
+gain_tab <- tab %>%
+  filter(value_pred>threshold)%>%
+  arrange(-value_pred) %>%
+  mutate(index=1:nrow(.)/nrow(.),log_value=log(Value),gain=cumsum(log(Value)-min(log(Value)))/sum(log(Value)-min(log(Value))),sub_sample=sample(1:round(nrow(.)/keep_fraction),replace=T,size=nrow(.)))
+  sprintf("the model Gini index is %s pct",round(100*(mean(gain_tab$gain,na.rm=T)*2-1),1))
+
+gain_tab <- tab %>%
+  filter(value_pred>threshold)%>%
+  arrange(-Value) %>%
+  mutate(index=1:nrow(.)/nrow(.),log_value=log(Value),gain=cumsum(log(Value)-min(log(Value)))/sum(log(Value)-min(log(Value))),sub_sample=sample(1:round(nrow(.)/keep_fraction),replace=T,size=nrow(.)))
+sprintf("the best theoretical Gini index is %s pct",round(100*(mean(gain_tab$gain,na.rm=T)*2-1),1))
+
+```
+
 
 Build sentence and check prediction
 ========================================================
@@ -750,9 +823,9 @@ Build sentence and check prediction
 
 dt.team <- data.frame(id=NA,Description=NA,comment=NA)
 dt.team[1,] <- c('colleague1',"dig a huge swimming pool with a nice veranda. rooftop bar and additional garage","rich")
-dt.team[2,] <- c('colleague2',"the movie was a bit disappointing. The actors weren't convincing and the movie was way too long","not a building permit")
-dt.team[3,] <- c('colleague3','alterations of the field to occupy less space with the seismic devices',"based on top imp features")
-dt.team[4,] <- c('colleague4','single family residence attached garage needs noise remedy improvement program',"based on lowest imp features")
+dt.team[2,] <- c('colleague2','alterations of the field to occupy less space with the seismic devices',"based on top imp features")
+dt.team[3,] <- c('colleague3','single family residence attached garage needs noise remedy improvement program',"based on lowest imp features")
+dt.team[4,] <- c('colleague4',"the movie was a bit disappointing. The actors weren't convincing and the movie was way too long","not a building permit")
 
 imp_ngrams<- gsub("_"," ",imp.raw_$Feature[1:100])
 dt.team <- rbind(dt.team,data.frame(id=sprintf("imp%s",1:100),Description=imp_ngrams,comment="simply ngram"))
@@ -762,7 +835,7 @@ NLP.team <- itoken(team.token,ids = dt.team[,"id"], progressbar = FALSE)
 NLP.matrix.team <- create_dtm(NLP.team, NLP.vectorizer)
 dt.team$value <- exp(predict(xgbMod_,newdata = NLP.matrix.team,type='response'))
 
-print(dt.team[,c("Description","value")])
+print(sample(dt.team)[1:5,c("Description","value")])
 
 ```
 hotel 127698.124
@@ -776,14 +849,14 @@ hospital 111057.947
 Latent Dirichlet Allocation - "text data clustering"
 ========================================================
 
-LDA 
+LDA
 
 https://datascience.stackexchange.com/questions/199/what-does-the-alpha-and-beta-hyperparameters-contribute-to-in-latent-dirichlet-a
 
 
 LDA Visualization
 
-https://nlp.stanford.edu/events/illvi2014/papers/sievert-illvi2014.pdf 
+https://nlp.stanford.edu/events/illvi2014/papers/sievert-illvi2014.pdf
 
 https://github.com/cpsievert/LDAvis
 
@@ -838,7 +911,7 @@ iter <- 50 #number of iter
 thin <- 10 #keep one out of "thin"
 delta <- .1
 
-# for VEM 
+# for VEM
 estimate.alpha=F
 var=list(iter.max=100,tol=10^-6)
 em=list(iter.max=200,tol=10^-4)
@@ -866,7 +939,7 @@ phi <- posterior(lda_VEM)$terms %>% as.matrix
 theta <- posterior(lda_VEM)$topics %>% as.matrix
 vocab <- dtm$dimnames$Terms
 doc_length <- i_sum$num_words
-  
+
 # Convert to json
 json_lda <- LDAvis::createJSON(phi = phi, theta = theta,
                                  vocab = vocab,
@@ -885,14 +958,14 @@ LDA common errors
 ========================================================
 1) doc.length
 
-<p color=red> Error in LDAvis::createJSON(phi = phi, theta = theta, vocab = vocab, doc.length = doc_length,  : 
+<p color=red> Error in LDAvis::createJSON(phi = phi, theta = theta, vocab = vocab, doc.length = doc_length,  :
 
-  Length of doc.length not equal 
-  
-      to the number of rows in theta; both should be equal to the number of 
-      
+  Length of doc.length not equal
+
+      to the number of rows in theta; both should be equal to the number of
+
       documents in the data.
-      
+
 </p>
 
 
@@ -904,14 +977,14 @@ document 663262
 
 final e step document 663262
 
-    user   system  elapsed 
-    
-5367.940    6.510 5410.864 
+    user   system  elapsed
+
+5367.940    6.510 5410.864
 
 </p>
 <p color=red> Warning message:
 
-In initialize(value, ...) : NAs introduced by coercion to integer range 
+In initialize(value, ...) : NAs introduced by coercion to integer range
 
 </p>
 
@@ -919,6 +992,6 @@ In initialize(value, ...) : NAs introduced by coercion to integer range
 
 
 
-To go further : 
+To go further :
 ========================================================
 http://tidytextmining.com/index.html
