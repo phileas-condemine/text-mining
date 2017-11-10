@@ -231,8 +231,8 @@ tm::inspect(text_corpus[sample(1:length(text_corpus),10)])
 ```{r}
 sentence <- text_corpus[[sample(1:length(text_corpus),1)]][1]
 print(sentence)
-write_lines(sentence,path = paste0(path_to_data,sentence_example.txt))
-sentence_raw <- hexView::readRaw(paste0(path_to_data,sentence_example.txt))
+write_lines(sentence,path = paste0(path_to_data,"sentence_example.txt"))
+sentence_raw <- hexView::readRaw(paste0(path_to_data,"sentence_example.txt"))
 sentence_raw
 # print(system("cat ../data/sentence_example.txt"))
 ```
